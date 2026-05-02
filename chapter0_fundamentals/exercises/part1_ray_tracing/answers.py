@@ -1,0 +1,61 @@
+# %% set up
+import tests
+import torch as t
+from jaxtyping import Bool, Float
+from torch import Tensor
+from utils import render_lines_with_plotly
+
+
+# %% Exercise - implement `make_rays_1d`
+def make_rays_1d(num_pixels: int, y_limit: float) -> Tensor:
+    """
+    num_pixels: The number of pixels in the y dimension. Since there is one ray per pixel, this is
+        also the number of rays.
+    y_limit: At x=1, the rays should extend from -y_limit to +y_limit, inclusive of both endpoints.
+
+    Returns: shape (num_pixels, num_points=2, num_dim=3) where the num_points dimension contains
+        (origin, direction) and the num_dim dimension contains xyz.
+
+    Example of make_rays_1d(9, 1.0): [
+        [[0, 0, 0], [1, -1.0, 0]],
+        [[0, 0, 0], [1, -0.75, 0]],
+        [[0, 0, 0], [1, -0.5, 0]],
+        ...
+        [[0, 0, 0], [1, 0.75, 0]],
+        [[0, 0, 0], [1, 1, 0]],
+    ]
+    """
+    rays = t.zeros(num_pixels, 2, 3)
+    rays[:, 1, 0] = 1
+    t.linspace(-y_limit, y_limit, num_pixels, out=rays[:, 1, 1])
+    return rays
+    raise NotImplementedError()
+
+rays1d = make_rays_1d(9, 10.0)
+fig = render_lines_with_plotly(rays1d)
+# %% Exercise - implement `intersect_ray_1d`
+def intersect_ray_1d(ray: Float[Tensor, "points dims"], segment: Float[Tensor, "points dims"]) -> bool:
+    """
+    ray: shape (n_points=2, n_dim=3)  # O, D points
+    segment: shape (n_points=2, n_dim=3)  # L_1, L_2 points
+
+    Return True if the ray intersects the segment.
+    """
+    O, D = ray[0, :2], ray[1, :2]
+    L1, L2 = segment[0, :2], segment[1, :2]
+    
+    mat = t.stack([D, L1 - L2], dim=1)
+    vec = L1 - O
+    
+    try:
+        u, v = t.linalg.solve(mat, vec)
+    except RuntimeError:
+        return False
+    
+    return (u >= 0) and (0 <= v <= 1)
+    raise NotImplementedError()
+
+
+tests.test_intersect_ray_1d(intersect_ray_1d)
+tests.test_intersect_ray_1d_special_case(intersect_ray_1d)
+# %% 
