@@ -1,4 +1,5 @@
 # %% set up
+import math
 from pathlib import Path
 
 import einops
@@ -272,4 +273,143 @@ mat_3d = t.arange(2 * 3 * 4).view((2, 3, 4))
 coords_3d = t.tensor([[0, 0, 0], [0, 1, 1], [0, 2, 2], [1, 0, 3], [1, 2, 0]])
 actual = integer_array_indexing(mat_3d, coords_3d)
 assert_all_equal(actual, t.tensor([0, 5, 10, 15, 20]))
+# %% (H1) batched logsumexp
+def batched_logsumexp(matrix: Tensor) -> Tensor:
+    """For each row of the matrix, compute log(sum(exp(row))) in a numerically stable way.
+
+    matrix: shape (batch, n)
+
+    Return: (batch, ). For each i, out[i] = log(sum(exp(matrix[i]))).
+
+    Do this without using PyTorch's logsumexp function.
+
+    A couple useful blogs about this function:
+    - https://leimao.github.io/blog/LogSumExp/
+    - https://gregorygundersen.com/blog/2020/02/09/log-sum-exp/
+    """
+    max = matrix.max(dim=1, keepdim=True).values
+    return (matrix - max).exp().sum(dim=1).log() + max.squeeze()
+    raise NotImplementedError()
+
+
+matrix = t.tensor([[-1000, -1000, -1000, -1000], [1000, 1000, 1000, 1000]])
+expected = t.tensor([-1000 + math.log(4), 1000 + math.log(4)])
+actual = batched_logsumexp(matrix)
+assert_all_close(actual, expected)
+
+matrix2 = t.randn((10, 20))
+expected2 = t.logsumexp(matrix2, dim=-1)
+actual2 = batched_logsumexp(matrix2)
+assert_all_close(actual2, expected2)
+# %% (H2) batched softmax
+def batched_softmax(matrix: Tensor) -> Tensor:
+    """For each row of the matrix, compute softmax(row).
+
+    Do this without using PyTorch's softmax function.
+    Instead, use the definition of softmax: https://en.wikipedia.org/wiki/Softmax_function
+
+    matrix: shape (batch, n)
+
+    Return: (batch, n). For each i, out[i] should sum to 1.
+    """
+    max = matrix.max(dim=1, keepdim=True).values
+    exps = (matrix - max).exp()
+    return exps / exps.sum(dim=1, keepdim=True)
+    raise NotImplementedError()
+
+
+matrix = t.arange(1, 6).view((1, 5)).float().log()
+expected = t.arange(1, 6).view((1, 5)) / 15.0
+actual = batched_softmax(matrix)
+assert_all_close(actual, expected)
+for i in [0.12, 3.4, -5, 6.7]:
+    assert_all_close(actual, batched_softmax(matrix + i))  # check it's translation-invariant
+
+matrix2 = t.rand((10, 20))
+actual2 = batched_softmax(matrix2)
+assert actual2.min() >= 0.0
+assert actual2.max() <= 1.0
+assert_all_equal(actual2.argsort(), matrix2.argsort())
+assert_all_close(actual2.sum(dim=-1), t.ones(matrix2.shape[:-1]))
+# %% (H3) batched logsoftmax
+def batched_logsoftmax(matrix: Tensor) -> Tensor:
+    """Compute log(softmax(row)) for each row of the matrix.
+
+    matrix: shape (batch, n)
+
+    Return: (batch, n).
+
+    Do this without using PyTorch's logsoftmax function.
+    For each row, subtract the maximum first to avoid overflow if the row contains large values.
+    """
+    return batched_softmax(matrix).log()
+    raise NotImplementedError()
+
+
+matrix = t.arange(1, 7).view((2, 3)).float()
+start = 1000
+matrix2 = t.arange(start + 1, start + 7).view((2, 3)).float()
+actual = batched_logsoftmax(matrix2)
+expected = t.tensor([[-2.4076, -1.4076, -0.4076], [-2.4076, -1.4076, -0.4076]])
+assert_all_close(actual, expected)
+# %% (H4) batched cross entropy loss
+def batched_cross_entropy_loss(logits: Tensor, true_labels: Tensor) -> Tensor:
+    """Compute the cross entropy loss for each example in the batch.
+
+    logits: shape (batch, classes). logits[i][j] is the unnormalized prediction for example i and class j.
+    true_labels: shape (batch, ). true_labels[i] is an integer index representing the true class for example i.
+
+    Return: shape (batch, ). out[i] is the loss for example i.
+
+    Hint: convert the logits to log-probabilities using your batched_logsoftmax from above.
+    Then the loss for an example is just the negative of the log-probability that the model assigned to the true class. Use torch.gather to perform the indexing.
+    """
+    assert logits.shape[0] == true_labels.shape[0]
+    assert true_labels.max() < logits.shape[1]
+    return -batched_logsoftmax(logits).gather(1, true_labels.unsqueeze(1)).squeeze()
+    raise NotImplementedError()
+
+
+logits = t.tensor([[float("-inf"), float("-inf"), 0], [1 / 3, 1 / 3, 1 / 3], [float("-inf"), 0, 0]])
+true_labels = t.tensor([2, 0, 0])
+expected = t.tensor([0.0, math.log(3), float("inf")])
+actual = batched_cross_entropy_loss(logits, true_labels)
+assert_all_close(actual, expected)
+# %% (I1) collect rows
+def collect_rows(matrix: Tensor, row_indexes: Tensor) -> Tensor:
+    """Return a 2D matrix whose rows are taken from the input matrix in order according to row_indexes.
+
+    matrix: shape (m, n)
+    row_indexes: shape (k,). Each value is an integer in [0..m).
+
+    Return: shape (k, n). out[i] is matrix[row_indexes[i]].
+    """
+    return matrix[row_indexes]
+    raise NotImplementedError()
+
+
+matrix = t.arange(15).view((5, 3))
+row_indexes = t.tensor([0, 2, 1, 0])
+actual = collect_rows(matrix, row_indexes)
+expected = t.tensor([[0, 1, 2], [6, 7, 8], [3, 4, 5], [0, 1, 2]])
+assert_all_equal(actual, expected)
+# %% (I2) collect columns
+def collect_columns(matrix: Tensor, column_indexes: Tensor) -> Tensor:
+    """Return a 2D matrix whose columns are taken from the input matrix in order according to column_indexes.
+
+    matrix: shape (m, n)
+    column_indexes: shape (k,). Each value is an integer in [0..n).
+
+    Return: shape (m, k). out[:, i] is matrix[:, column_indexes[i]].
+    """
+    assert column_indexes.max() < matrix.shape[1]
+    return matrix[:, column_indexes]
+    raise NotImplementedError()
+
+
+matrix = t.arange(15).view((5, 3))
+column_indexes = t.tensor([0, 2, 1, 0])
+actual = collect_columns(matrix, column_indexes)
+expected = t.tensor([[0, 2, 1, 0], [3, 5, 4, 3], [6, 8, 7, 6], [9, 11, 10, 9], [12, 14, 13, 12]])
+assert_all_equal(actual, expected)
 # %%
