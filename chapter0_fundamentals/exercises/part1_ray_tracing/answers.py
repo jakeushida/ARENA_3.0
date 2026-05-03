@@ -1,4 +1,5 @@
 # %% set up
+import einops
 import tests
 import torch as t
 from jaxtyping import Bool, Float
@@ -58,4 +59,31 @@ def intersect_ray_1d(ray: Float[Tensor, "points dims"], segment: Float[Tensor, "
 
 tests.test_intersect_ray_1d(intersect_ray_1d)
 tests.test_intersect_ray_1d_special_case(intersect_ray_1d)
-# %% 
+# %% Exercise - implement `intersect_rays_1d`
+def intersect_rays_1d(
+    rays: Float[Tensor, "nrays 2 3"], segments: Float[Tensor, "nsegments 2 3"]
+) -> Bool[Tensor, " nrays"]:
+    """
+    For each ray, return True if it intersects any segment.
+    """
+    rays = einops.repeat(rays, 'rays points coords -> rays segs points coords', segs=segments.size(0))
+    segments = einops.repeat(segments, 'segs points coords -> rays segs points coords', rays=rays.size(0))
+
+    O, D = rays[..., 0, :2], rays[..., 1, :2]
+    L1, L2 = segments[..., 0, :2], segments[..., 1, :2]
+
+    mat = t.stack([D, L1 - L2], dim=-1)
+    vec = L1 - O
+
+    is_singular = mat.det().abs() < 1e-8
+    mat[is_singular] = t.eye(2)
+
+    u, v = t.linalg.solve(mat, vec).unbind(-1)
+
+    return ((u >= 0) & (v >= 0) & (v <= 1) & ~is_singular).any(dim=-1)
+    raise NotImplementedError()
+
+
+tests.test_intersect_rays_1d(intersect_rays_1d)
+tests.test_intersect_rays_1d_special_case(intersect_rays_1d)
+# %%
