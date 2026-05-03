@@ -112,4 +112,31 @@ def make_rays_2d(num_pixels_y: int, num_pixels_z: int, y_limit: float, z_limit: 
 
 rays_2d = make_rays_2d(10, 10, 0.3, 0.3)
 render_lines_with_plotly(rays_2d)
-# %%
+# %% Exercise - implement `triangle_ray_intersects`
+Point = Float[Tensor, "points=3"]
+
+
+def triangle_ray_intersects(A: Point, B: Point, C: Point, O: Point, D: Point) -> bool:
+    """
+    A: shape (3,), one vertex of the triangle
+    B: shape (3,), second vertex of the triangle
+    C: shape (3,), third vertex of the triangle
+    O: shape (3,), origin point
+    D: shape (3,), direction point
+
+    Return True if the ray and the triangle intersect.
+    """
+    mat = t.stack([-D, B - A, C - A], dim=1)
+    vec = O - A
+
+    try:
+        s, u, v = t.linalg.solve(mat, vec)
+    except RuntimeError:
+        return False
+
+    return ((s >= 0) & (u >= 0) & (v >= 0) & ((u + v) <= 1)).item()
+    raise NotImplementedError()
+
+
+tests.test_triangle_ray_intersects(triangle_ray_intersects)
+# %% 
