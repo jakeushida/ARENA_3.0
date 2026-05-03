@@ -1,11 +1,24 @@
 # %% set up
+import sys
+from pathlib import Path
+
 import einops
+import plotly.express as px
 import tests
 import torch as t
 from jaxtyping import Bool, Float
 from plotly_utils import imshow
 from torch import Tensor
 from utils import render_lines_with_plotly
+
+# Make sure exercises are in the path
+chapter = "chapter0_fundamentals"
+section = "part1_ray_tracing"
+root_dir = next(p for p in Path.cwd().parents if (p / chapter).exists())
+exercises_dir = root_dir / chapter / "exercises"
+section_dir = exercises_dir / section
+if str(exercises_dir) not in sys.path:
+    sys.path.append(str(exercises_dir))
 
 
 # %% Exercise - implement `make_rays_1d`
@@ -179,4 +192,50 @@ render_lines_with_plotly(rays2d, triangle_lines)
 intersects = raytrace_triangle(rays2d, test_triangle)
 img = intersects.reshape(num_pixels_y, num_pixels_z).int()
 imshow(img, origin="lower", width=600, title="Triangle (as intersected by rays)")
+# %% Exercise - implement `raytrace_mesh`
+def raytrace_mesh(
+    rays: Float[Tensor, "nrays rayPoints=2 dims=3"],
+    triangles: Float[Tensor, "ntriangles trianglePoints=3 dims=3"],
+) -> Float[Tensor, " nrays"]:
+    """
+    For each ray, return the distance to the closest intersecting triangle, or infinity.
+    """
+    O, D = einops.repeat(rays, 'rays pts dims -> pts rays triangles dims', triangles=triangles.size(0))
+    A, B, C = einops.repeat(triangles, 'triangles pts dims -> pts rays triangles dims', rays=rays.size(0))
+
+    mat = t.stack([-D, B - A, C - A], dim=2)
+    vec = O - A
+
+    is_singular = mat.det().abs() < 1e-8
+    mat[is_singular] = t.eye(3)
+
+    s, u, v = t.linalg.solve(mat, vec).unbind(-1)
+
+    intersects = (s >= 0) & (u >= 0) & (v >= 0) & ((u + v) <= 1) & ~is_singular
+
+    s *= D[..., 0] # get the x value of the intersection (if it exists)
+
+    s[~intersects] = float('inf')
+    
+    return einops.reduce(s, 'rays triangles -> rays', 'min')
+    raise NotImplementedError()
+
+
+num_pixels_y = 120
+num_pixels_z = 120
+y_limit = z_limit = 1
+
+rays = make_rays_2d(num_pixels_y, num_pixels_z, y_limit, z_limit)
+rays[:, 0] = t.tensor([-2, 0.0, 0.0])
+triangles = t.load(section_dir / "pikachu.pt", weights_only=True)
+dists = raytrace_mesh(rays, triangles)
+intersects = t.isfinite(dists).view(num_pixels_y, num_pixels_z)
+dists_square = dists.view(num_pixels_y, num_pixels_z)
+img = t.stack([intersects, dists_square], dim=0)
+
+fig = px.imshow(img, facet_col=0, origin="lower", color_continuous_scale="magma", width=1000)
+fig.update_layout(coloraxis_showscale=False)
+for i, text in enumerate(["Intersects", "Distance"]):
+    fig.layout.annotations[i]["text"] = text
+fig.show()
 # %%
