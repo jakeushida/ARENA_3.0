@@ -296,8 +296,49 @@ num_frames = 50
 
 rays = make_rays_2d(num_pixels_y, num_pixels_z, y_limit, z_limit)
 rays[:, 0] = t.tensor([-3.0, 0.0, 0.0])
+# %% run animation
 dists = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_mesh, num_frames)
 dists = einops.rearrange(dists, "frames (y z) -> frames y z", y=num_pixels_y)
 
+display_video(dists)
+# %% check if cuda is available
+t.cuda.is_available()
+# %% Exercise - use GPUs
+def raytrace_mesh_gpu(
+    rays: Float[Tensor, "nrays rayPoints=2 dims=3"],
+    triangles: Float[Tensor, "ntriangles trianglePoints=3 dims=3"],
+) -> Float[Tensor, " nrays"]:
+    """
+    For each ray, return the distance to the closest intersecting triangle, or infinity.
+
+    All computations should be performed on the GPU.
+    """
+    device = 'cuda'
+    rays = rays.to(device)
+    triangles = triangles.to(device)
+    
+    O, D = einops.repeat(rays, 'rays pts dims -> pts rays triangles dims', triangles=triangles.size(0))
+    A, B, C = einops.repeat(triangles, 'triangles pts dims -> pts rays triangles dims', rays=rays.size(0))
+
+    mat = t.stack([-D, B - A, C - A], dim=2)
+    vec = O - A
+
+    is_singular = mat.det().abs() < 1e-8
+    mat[is_singular] = t.eye(3).to(device)
+
+    s, u, v = t.linalg.solve(mat, vec).unbind(-1)
+
+    intersects = (s >= 0) & (u >= 0) & (v >= 0) & ((u + v) <= 1) & ~is_singular
+
+    s *= D[..., 0] # get the x value of the intersection (if it exists)
+
+    s[~intersects] = float('inf')
+    
+    return einops.reduce(s, 'rays triangles -> rays', 'min').cpu()
+    raise NotImplementedError()
+
+
+dists = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_mesh_gpu, num_frames)
+dists = einops.rearrange(dists, "frames (y z) -> frames y z", y=num_pixels_y)
 display_video(dists)
 # %%
