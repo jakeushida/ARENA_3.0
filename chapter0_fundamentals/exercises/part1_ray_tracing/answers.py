@@ -1,5 +1,6 @@
 # %% set up
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -341,4 +342,97 @@ def raytrace_mesh_gpu(
 dists = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_mesh_gpu, num_frames)
 dists = einops.rearrange(dists, "frames (y z) -> frames y z", y=num_pixels_y)
 display_video(dists)
+# %% Exercise (bonus) - add lighting
+def raytrace_mesh_lambert(
+    rays: Float[Tensor, "nrays points=2 dims=3"],
+    triangles: Float[Tensor, "ntriangles points=3 dims=3"],
+    light: Float[Tensor, "dims=3"],
+    ambient_intensity: float,
+    device: str = "cuda" # exercise done on cpu so variable not used,
+) -> Float[Tensor, " nrays"]:
+    """
+    For each ray, return the intensity of light hitting the triangle it intersects with (or zero if
+    no intersection).
+
+    Args:
+        rays:   A tensor of rays, with shape `[nrays, 2, 3]`.
+        triangles:  A tensor of triangles, with shape `[ntriangles, 3, 3]`.
+        light:  A tensor representing the light vector, with shape `[3]`. We compute the intensity
+                as the dot product of the triangle normals & the light vector, then set it to be
+                zero if the sign is negative.
+        ambient_intensity:  A float representing the ambient intensity. This is the minimum
+                            brightness for a triangle, to differentiate it from the black background
+                            (rays that don't hit any triangle).
+        device: The device to perform the computation on.
+
+    Returns:
+        A tensor of intensities for each of the rays, flattened over the [y, z] dimensions. The
+        values are zero when there is no intersection, and `ambient_intensity + intensity` when
+        there is an interesection (where `intensity` is the dot product of the triangle's normal
+        vector and the light vector, truncated at zero).
+    """
+    NR, NT = rays.size(0), triangles.size(0)
+    
+    O, D = einops.repeat(rays, 'rays pts dims -> pts rays triangles dims', triangles=NT)
+    
+    A, B, C = einops.repeat(triangles, 'triangles pts dims -> pts rays triangles dims', rays=NR)
+    assert O.shape == A.shape == (NR, NT, 3)
+
+    mat: Float[Tensor, 'NR NT 3 3'] = t.stack([-D, B - A, C - A], dim=2)
+    vec: Float[Tensor, 'NR NT 3'] = O - A
+
+    is_singular: Float[Tensor, 'NR NT'] = mat.det().abs() < 1e-8
+    mat[is_singular] = t.eye(3)
+
+    sol: Float[Tensor, 'NR NT 3'] = t.linalg.solve(mat, vec)
+    s, u, v = sol.unbind(-1)
+    assert s.shape == (NR, NT)
+
+    intersects: Float[Tensor, 'NR NT'] = (s >= 0) & (u >= 0) & (v >= 0) & ((u + v) <= 1) & ~is_singular
+
+    s *= D[..., 0] # get the x value of the intersection (if it exists)
+
+    s[~intersects] = float('inf')
+
+    closest_triangles_dist, closest_triangles_idx = s.min(1)
+
+    cross: Float[Tensor, 'NT 3'] = t.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], dim=1)
+    
+    normal = cross / cross.norm(keepdim=True)
+    
+    dot: Float[Tensor, 'NT'] = einops.einsum(normal, light, 'NT dims, dims -> NT')
+    dot_non_negative = t.where(dot > 0, dot, 0)
+    
+    intensity = dot_non_negative[closest_triangles_idx] + ambient_intensity
+    intensity = t.where(closest_triangles_dist.isfinite(), intensity, 0)
+
+    return intensity
+    raise NotImplementedError()
+
+
+def display_video_with_lighting(intensity: Float[Tensor, "frames y z"]):
+    """
+    Displays video of raytracing results, using Plotly. `distances` is a tensor where the [i, y, z]
+    element is the lighting intensity based on the angle of light & the surface of the triangle
+    which this ray hits first.
+    """
+    px.imshow(
+        intensity,
+        animation_frame=0,
+        origin="lower",
+        color_continuous_scale="magma",
+    ).update_layout(coloraxis_showscale=False, width=550, height=600, title="Raytrace mesh video (lighting)").show()
+
+
+ambient_intensity = 0.5
+light = t.tensor([0.0, -1.0, 1.0])
+raytrace_function = partial(
+    raytrace_mesh_lambert,
+    ambient_intensity=ambient_intensity,
+    light=light,
+)
+
+intensity = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_function, num_frames)
+intensity = einops.rearrange(intensity, "frames (y z) -> frames y z", y=num_pixels_y)
+display_video_with_lighting(intensity)
 # %%
