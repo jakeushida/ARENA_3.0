@@ -398,7 +398,7 @@ def raytrace_mesh_lambert(
 
     cross: Float[Tensor, 'NT 3'] = t.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], dim=1)
     
-    normal = cross / cross.norm(keepdim=True)
+    normal = cross / cross.norm(dim=1, keepdim=True)
     
     dot: Float[Tensor, 'NT'] = einops.einsum(normal, light, 'NT dims, dims -> NT')
     dot_non_negative = t.where(dot > 0, dot, 0)
