@@ -105,7 +105,7 @@ class Flatten(nn.Module):
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.flatten = Flatten(0, -1)
+        self.flatten = Flatten()
         self.linear1 = Linear(28 ** 2, 100)
         self.relu = ReLU()
         self.linear2 = Linear(100, 10)
