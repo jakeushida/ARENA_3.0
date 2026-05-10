@@ -280,7 +280,46 @@ def train(args: SimpleMLPTrainingArgs) -> tuple[list[float], list[float], Simple
     Returns:
         The model, and lists of loss & accuracy.
     """
-    # YOUR CODE HERE - add a validation loop to the train function from above
+    model = SimpleMLP().to(device)
+
+    mnist_trainset, mnist_testset = get_mnist()
+    mnist_trainloader = DataLoader(mnist_trainset, batch_size=args.batch_size, shuffle=True)
+    mnist_testloader = DataLoader(mnist_testset, batch_size=args.batch_size, shuffle=False)
+
+    optimizer = t.optim.Adam(model.parameters(), lr=args.learning_rate)
+    loss_list = []
+    accuracy_list = []
+
+    for epoch in range(args.epochs):
+        pbar = tqdm(mnist_trainloader)
+
+        for imgs, labels in pbar:
+            # Move data to device, perform forward pass
+            imgs, labels = imgs.to(device), labels.to(device)
+            logits = model(imgs)
+
+            # Calculate loss, perform backward pass
+            loss = F.cross_entropy(logits, labels)
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            # Update logs & progress bar
+            loss_list.append(loss.item())
+            pbar.set_postfix(epoch=f"{epoch + 1}/{args.epochs}", loss=f"{loss:.3f}")
+
+        total_correct = 0
+
+        for imgs, labels in mnist_testloader:
+            # Move data to device, perform forward pass
+            imgs, labels = imgs.to(device), labels.to(device)
+            with t.inference_mode():
+                logits = model(imgs)
+            
+            total_correct += (logits.argmax(dim=-1) == labels).sum().item()
+        
+        accuracy = total_correct / len(mnist_testset)
+        accuracy_list.append(accuracy)
 
     return loss_list, accuracy_list, model
 
@@ -296,3 +335,4 @@ line(
     title="SimpleMLP training on MNIST",
     width=800,
 )
+# %%
