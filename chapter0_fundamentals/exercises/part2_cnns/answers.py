@@ -4,16 +4,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import einops
-import torch as t
-import torch.nn as nn
-import torch.nn.functional as F
-from plotly_utils import line
-from torch import Tensor
-from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, models, transforms
-from tqdm.notebook import tqdm
-
 # Make sure exercises are in the path
 chapter = "chapter0_fundamentals"
 section = "part2_cnns"
@@ -23,8 +13,16 @@ section_dir = exercises_dir / section
 if str(exercises_dir) not in sys.path:
     sys.path.append(str(exercises_dir))
 
-
+import einops
 import part2_cnns.tests as tests
+import torch as t
+import torch.nn as nn
+import torch.nn.functional as F
+from plotly_utils import line
+from torch import Tensor
+from torch.utils.data import DataLoader, Subset
+from torchvision import datasets, models, transforms
+from tqdm.notebook import tqdm
 
 
 # %% Exercise - implement `ReLU`
@@ -335,4 +333,46 @@ line(
     title="SimpleMLP training on MNIST",
     width=800,
 )
+# %% Exercise - implement `Conv2d`
+class Conv2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+    ):
+        """
+        Same as torch.nn.Conv2d with bias=False.
+
+        Name your weight field `self.weight` for compatibility with the PyTorch version.
+
+        We assume kernel is square, with height = width = `kernel_size`.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        bound = 1 / (in_channels * kernel_size ** 2) ** 0.5
+        weight = t.empty(out_channels, in_channels, kernel_size, kernel_size).uniform_(-bound, bound)
+
+        self.weight = nn.Parameter(weight)
+        # raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply the functional conv2d, which you can import."""
+        return t.nn.functional.conv2d(x, self.weight, stride=self.stride, padding=self.padding)
+
+    def extra_repr(self) -> str:
+        keys = ["in_channels", "out_channels", "kernel_size", "stride", "padding"]
+        return ", ".join([f"{key}={getattr(self, key)}" for key in keys])
+
+
+tests.test_conv2d_module(Conv2d)
+m = Conv2d(in_channels=24, out_channels=12, kernel_size=3, stride=2, padding=1)
+print(f"Manually verify that this is an informative repr: {m}")
 # %%
