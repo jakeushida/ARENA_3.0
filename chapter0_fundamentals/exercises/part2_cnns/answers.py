@@ -13,6 +13,8 @@ section_dir = exercises_dir / section
 if str(exercises_dir) not in sys.path:
     sys.path.append(str(exercises_dir))
 
+from collections import OrderedDict
+
 import einops
 import part2_cnns.tests as tests
 import torch as t
@@ -375,4 +377,81 @@ class Conv2d(nn.Module):
 tests.test_conv2d_module(Conv2d)
 m = Conv2d(in_channels=24, out_channels=12, kernel_size=3, stride=2, padding=1)
 print(f"Manually verify that this is an informative repr: {m}")
+# %%　MaxPool2d
+class MaxPool2d(nn.Module):
+    def __init__(self, kernel_size: int, stride: int | None = None, padding: int = 1):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Call the functional version of maxpool2d."""
+        return F.max_pool2d(x, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding)
+
+    def extra_repr(self) -> str:
+        """Add additional information to the string representation of this class."""
+        return ", ".join([f"{key}={getattr(self, key)}" for key in ["kernel_size", "stride", "padding"]])
+# %% Sequential
+class Sequential(nn.Module):
+    _modules: dict[str, nn.Module]
+
+    def __init__(self, *modules: nn.Module):
+        super().__init__()
+        for index, mod in enumerate(modules):
+            self._modules[str(index)] = mod
+
+    def __getitem__(self, index: int) -> nn.Module:
+        index %= len(self._modules)  # deal with negative indices
+        return self._modules[str(index)]
+
+    def __setitem__(self, index: int, module: nn.Module) -> None:
+        index %= len(self._modules)  # deal with negative indices
+        self._modules[str(index)] = module
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Chain each module together, with the output from one feeding into the next one."""
+        for mod in self._modules.values():
+            x = mod(x)
+        return x
+# %% sequential practice
+seq = Sequential(
+    ReLU(),
+    Linear(2, 3),
+    Flatten(),
+    Conv2d(5, 6, 3),
+    MaxPool2d(2)
+)
+
+print(seq)
+# %% Sequential that takes in OrderedDict
+class Sequential_OrderedDict(nn.Module):
+    _modules: dict[str, nn.Module]
+
+    def __init__(self, modules: OrderedDict[str, nn.Module]):
+        super().__init__()
+        for name, module in modules.items():
+            self._modules[name] = module
+
+    def __getitem__(self, name: str) -> nn.Module:
+        return self._modules[name]
+
+    def __setitem__(self, name: str, module: nn.Module) -> None:
+        self._modules[name] = module
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Chain each module together, with the output from one feeding into the next one."""
+        for mod in self._modules.values():
+            x = mod(x)
+        return x
+# %% test Sequential_OrderedDict
+seq = Sequential_OrderedDict(OrderedDict([
+    ("relu", ReLU()),
+    ("linear", Linear(2, 3)),
+    ("flatten", Flatten()), 
+    ("conv2d", Conv2d(5, 6, 3)),
+    ("maxpool2d", MaxPool2d(2))
+]))
+
+print(seq)
 # %%
