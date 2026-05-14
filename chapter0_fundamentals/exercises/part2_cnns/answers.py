@@ -20,6 +20,7 @@ import part2_cnns.tests as tests
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
+from jaxtyping import Float, Int
 from plotly_utils import line
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset
@@ -454,4 +455,78 @@ seq = Sequential_OrderedDict(OrderedDict([
 ]))
 
 print(seq)
+# %% Exercise - implement `BatchNorm2d`
+class BatchNorm2d(nn.Module):
+    # The type hints below aren't functional, they're just for documentation
+    running_mean: Float[Tensor, " num_features"]
+    running_var: Float[Tensor, " num_features"]
+    num_batches_tracked: Int[Tensor, ""]  # This is how we denote a scalar tensor
+
+    def __init__(self, num_features: int, eps=1e-05, momentum=0.1):
+        """
+        Like nn.BatchNorm2d with track_running_stats=True and affine=True.
+
+        Name the learnable affine parameters `weight` and `bias` in that order.
+        """
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+
+        self.weight = nn.Parameter(t.ones(num_features))
+        self.bias = nn.Parameter(t.zeros(num_features))
+
+        self.register_buffer("running_mean", t.zeros(num_features))
+        self.register_buffer("running_var", t.ones(num_features))
+        self.register_buffer("num_batches_tracked", t.tensor(0))
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Normalize each channel.
+
+        Compute the variance using `torch.var(x, unbiased=False)`
+        Hint: you may also find it helpful to use the argument `keepdim`.
+
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels, height, width)
+        """
+        self.num_batches_tracked += 1
+
+        if self.training:
+            # calculate mean and var across all dimensions except feature dimension
+            mean = x.mean(dim=(0, 2, 3))
+            var = x.var(dim=(0, 2, 3), unbiased=False)
+            assert mean.shape == var.shape == (self.num_features,)
+
+            # update mean and var using exponentially weighted moving average
+            self.running_mean = self.momentum * mean + (1 - self.momentum) * self.running_mean
+            self.running_var = self.momentum * var + (1 - self.momentum) * self.running_var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+        
+        # define reshape function
+        reshape = lambda x: einops.rearrange(x, "c -> 1 c 1 1")
+        
+        # normalize each input value
+        normalized_x = (x - reshape(mean)) / (reshape(var) + self.eps).sqrt() # add eps to avoid zero devision error
+        assert normalized_x.shape == x.shape
+
+        # affine transformation 
+        transformed_x = normalized_x * reshape(self.weight) + reshape(self.bias)
+
+        return transformed_x
+        raise NotImplementedError()
+
+    def extra_repr(self) -> str:
+        return f"num_features={self.num_features}, epsilon={self.eps}, momentum={self.momentum}"
+        raise NotImplementedError()
+
+
+tests.test_batchnorm2d_module(BatchNorm2d)
+tests.test_batchnorm2d_forward(BatchNorm2d)
+tests.test_batchnorm2d_running_mean(BatchNorm2d)
+# %% test extra_repr
+batch_norm_2d = BatchNorm2d(2)
+print(batch_norm_2d)
 # %%
