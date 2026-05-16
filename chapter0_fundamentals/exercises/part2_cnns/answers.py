@@ -529,4 +529,16 @@ tests.test_batchnorm2d_running_mean(BatchNorm2d)
 # %% test extra_repr
 batch_norm_2d = BatchNorm2d(2)
 print(batch_norm_2d)
+# %% Exercise - implement `AveragePool`
+class AveragePool(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels)
+        """
+        return einops.reduce(x, "b c h w -> b c", 'mean')
+        raise NotImplementedError()
+
+
+tests.test_averagepool(AveragePool)
 # %%
