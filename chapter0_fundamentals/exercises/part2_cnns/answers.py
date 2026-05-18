@@ -541,4 +541,51 @@ class AveragePool(nn.Module):
 
 
 tests.test_averagepool(AveragePool)
+# %% Exercise - implement `ResidualBlock`
+class ResidualBlock(nn.Module):
+    def __init__(self, in_feats: int, out_feats: int, first_stride=1):
+        """
+        A single residual block with optional downsampling.
+
+        For compatibility with the pretrained model, declare the left side branch first using a
+        `Sequential`.
+
+        If first_stride is > 1, this means the optional (conv + bn) should be present on the right
+        branch. Declare it second using another `Sequential`.
+        """
+        super().__init__()
+        is_shape_preserving = (first_stride == 1) and (in_feats == out_feats)  # determines if right branch is identity
+        
+        self.left_branch = Sequential(
+            Conv2d(in_feats, out_feats, kernel_size=3, stride=first_stride, padding=1), 
+            BatchNorm2d(out_feats), 
+            ReLU(), 
+            Conv2d(out_feats, out_feats, kernel_size=3, stride=1, padding=1), 
+            BatchNorm2d(out_feats))
+        
+        self.right_branch = (
+            nn.Identity() 
+            if is_shape_preserving 
+            else Sequential(
+                Conv2d(in_feats, out_feats, kernel_size=1, stride=first_stride, padding=0), 
+                BatchNorm2d(out_feats)))
+
+        self.relu = ReLU()
+
+        #raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Compute the forward pass. If no downsampling block is present, the addition should just add
+        the left branch's output to the input.
+
+        x: shape (batch, in_feats, height, width)
+
+        Return: shape (batch, out_feats, height / stride, width / stride)
+        """
+        return self.relu(self.left_branch(x) + self.right_branch(x))
+        raise NotImplementedError()
+
+
+tests.test_residual_block(ResidualBlock)
 # %%
