@@ -774,4 +774,54 @@ for i, img in enumerate(images):
     )
     rprint(table)
     display(img)
-# %%
+# %% hooks
+class NanModule(nn.Module):
+    """
+    Define a module that always returns NaNs (we will use hooks to identify this error).
+    """
+
+    def forward(self, x):
+        return t.full_like(x, float("nan"))
+
+
+def hook_check_for_nan_output(module: nn.Module, input: tuple[Tensor], output: Tensor) -> None:
+    """
+    Hook function which detects when the output of a layer is NaN.
+    """
+    if t.isnan(output).any():
+        raise ValueError(f"NaN output from {module}")
+
+
+def add_hook(module: nn.Module) -> None:
+    """
+    Register our hook function in a module.
+
+    Use model.apply(add_hook) to recursively apply the hook to model and all submodules.
+    """
+    module.register_forward_hook(hook_check_for_nan_output)
+
+
+def remove_hooks(module: nn.Module) -> None:
+    """
+    Remove all hooks from module.
+
+    Use module.apply(remove_hooks) to do this recursively.
+    """
+    module._backward_hooks.clear()
+    module._forward_hooks.clear()
+    module._forward_pre_hooks.clear()
+
+
+# Create our model with a NaN in the middle, and apply a hook fn to it which checks for NaNs
+model = nn.Sequential(nn.Identity(), NanModule(), nn.Identity())
+model = model.apply(add_hook)
+
+# Run the model, and our hook function should raise an error that gets caught by the try-except
+try:
+    input = t.randn(3)
+    output = model(input)
+except ValueError as e:
+    print(e)
+
+# Remove hooks at the end
+model = model.apply(remove_hooks)
