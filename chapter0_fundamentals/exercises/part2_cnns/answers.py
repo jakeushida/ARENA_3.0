@@ -825,3 +825,36 @@ except ValueError as e:
 
 # Remove hooks at the end
 model = model.apply(remove_hooks)
+# %% freezing gradients demo
+layer0, layer1 = nn.Linear(3, 4), nn.Linear(4, 5)
+
+layer0.requires_grad_(False)  # generic code to set `param.requires_grad=False` recursively for a module / entire model
+
+x = t.randn(3)
+out = layer1(layer0(x)).sum()
+out.backward()
+
+assert layer0.weight.grad is None
+assert layer1.weight.grad is not None
+# %% Exercise - prepare ResNet for feature extraction
+def get_resnet_for_feature_extraction(n_classes: int) -> ResNet34:
+    """
+    Creates a ResNet34 instance, replaces its final linear layer with a classifier for `n_classes`
+    classes, and freezes all weights except the ones in this layer.
+
+    Returns the ResNet model.
+    """
+    my_resnet = ResNet34().to(device)
+    pretrained_resnet = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1).to(device)
+    
+    my_resnet = copy_weights(my_resnet, pretrained_resnet)
+    
+    my_resnet.requires_grad_(False)
+
+    my_resnet.all_layers[-1] = Linear(my_resnet.out_features_per_group[-1], n_classes)
+
+    return my_resnet
+    raise NotImplementedError()
+
+
+tests.test_get_resnet_for_feature_extraction(get_resnet_for_feature_extraction)
