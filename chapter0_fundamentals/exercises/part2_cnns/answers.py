@@ -844,8 +844,8 @@ def get_resnet_for_feature_extraction(n_classes: int) -> ResNet34:
 
     Returns the ResNet model.
     """
-    my_resnet = ResNet34().to(device)
-    pretrained_resnet = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1).to(device)
+    my_resnet = ResNet34()
+    pretrained_resnet = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
     
     my_resnet = copy_weights(my_resnet, pretrained_resnet)
     
@@ -858,3 +858,89 @@ def get_resnet_for_feature_extraction(n_classes: int) -> ResNet34:
 
 
 tests.test_get_resnet_for_feature_extraction(get_resnet_for_feature_extraction)
+# %% load in CIFAR10 dataset
+def get_cifar() -> tuple[datasets.CIFAR10, datasets.CIFAR10]:
+    """Returns CIFAR-10 train and test sets."""
+    cifar_trainset = datasets.CIFAR10(exercises_dir / "data", train=True, download=True, transform=IMAGENET_TRANSFORM)
+    cifar_testset = datasets.CIFAR10(exercises_dir / "data", train=False, download=True, transform=IMAGENET_TRANSFORM)
+    return cifar_trainset, cifar_testset
+
+
+@dataclass
+class ResNetTrainingArgs:
+    batch_size: int = 64
+    epochs: int = 5
+    learning_rate: float = 1e-3
+    n_classes: int = 10
+# %% Exercise - write training loop for feature extraction
+from torch.utils.data import Subset
+
+
+def get_cifar_subset(trainset_size: int = 10_000, testset_size: int = 1_000) -> tuple[Subset, Subset]:
+    """Returns a subset of CIFAR-10 train & test sets (slicing the first examples)."""
+    cifar_trainset, cifar_testset = get_cifar()
+    return Subset(cifar_trainset, range(trainset_size)), Subset(cifar_testset, range(testset_size))
+
+
+def train(args: ResNetTrainingArgs) -> tuple[list[float], list[float], ResNet34]:
+    """
+    Performs feature extraction on ResNet, returning the model & lists of loss and accuracy.
+    """
+    my_resnet = get_resnet_for_feature_extraction(args.n_classes).to(device)
+
+    optimizer = t.optim.Adam(my_resnet.all_layers[-1].parameters(), args.learning_rate)
+
+    cifar_trainset, cifar_testset = get_cifar_subset()
+    cifar_trainloader = DataLoader(cifar_trainset, args.batch_size, shuffle=True)
+    cifar_testloader = DataLoader(cifar_testset, args.batch_size, shuffle=False)
+
+    loss_list = []
+    accuracy_list = []
+    for epoch in range(args.epochs):
+        pbar = tqdm(cifar_trainloader)
+
+        my_resnet.train()
+        for imgs, labels in pbar:
+            imgs, labels = imgs.to(device), labels.to(device)
+            
+            logits = my_resnet(imgs)
+
+            loss = F.cross_entropy(logits, labels)
+            loss_list.append(loss.item())
+            pbar.set_postfix(epoch=f"{epoch + 1}/{args.epochs}", loss=f"{loss:.3f}")
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+        
+        my_resnet.eval()
+        total_correct = 0
+        for imgs, labels in cifar_testloader:
+            imgs, labels = imgs.to(device), labels.to(device)
+
+            with t.inference_mode():
+                logits = my_resnet(imgs)
+
+            total_correct += (logits.argmax(dim=1) == labels).sum().item()
+        
+        accuracy = total_correct / len(cifar_testset)
+        accuracy_list.append(accuracy)
+
+    return loss_list, accuracy_list, my_resnet
+    raise NotImplementedError()
+
+
+args = ResNetTrainingArgs()
+loss_list, accuracy_list, model = train(args)
+# %% plot graph
+line(
+    y=[
+        loss_list,
+        [1 / args.n_classes] + accuracy_list,
+    ],  # we start by assuming a uniform accuracy of 10%
+    use_secondary_yaxis=True,
+    x_max=args.epochs * 10_000,
+    labels={"x": "Num examples seen", "y1": "Cross entropy loss", "y2": "Test Accuracy"},
+    title="ResNet Feature Extraction",
+    width=800,
+)
