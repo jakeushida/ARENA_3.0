@@ -1014,4 +1014,19 @@ for i, test_case in enumerate(test_cases):
         else:
             print(f"Test {i} passed!")
 
-# %%
+# %% Exercise - trace
+def as_strided_trace(mat: Float[Tensor, "i j"]) -> Float[Tensor, ""]:
+    """
+    Returns the same as `torch.trace`, using only `as_strided` and `sum` methods.
+    """
+    assert mat.dim() == 2
+
+    stride = mat.stride()
+    size = (min(mat.size(0), mat.size(1)),)
+    diag = mat.as_strided(size=size, stride=(stride[0] + stride[1],))
+    return diag.sum()
+    raise NotImplementedError()
+
+
+tests.test_trace(as_strided_trace)
+# %% 
