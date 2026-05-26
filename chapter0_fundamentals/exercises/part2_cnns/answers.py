@@ -1029,4 +1029,17 @@ def as_strided_trace(mat: Float[Tensor, "i j"]) -> Float[Tensor, ""]:
 
 
 tests.test_trace(as_strided_trace)
-# %% 
+# %% Exercise - matrix-vector multiplication
+def as_strided_mv(mat: Float[Tensor, "i j"], vec: Float[Tensor, " j"]) -> Float[Tensor, " i"]:
+    """
+    Returns the same as `torch.matmul`, using only `as_strided` and `sum` methods.
+    """
+    vec_repeated = vec.as_strided(size=mat.shape, stride=(0, vec.stride(0)))
+    product = mat * vec_repeated
+    return product.sum(dim=1)
+    raise NotImplementedError()
+
+
+tests.test_mv(as_strided_mv)
+tests.test_mv2(as_strided_mv)
+# %%
