@@ -1042,4 +1042,18 @@ def as_strided_mv(mat: Float[Tensor, "i j"], vec: Float[Tensor, " j"]) -> Float[
 
 tests.test_mv(as_strided_mv)
 tests.test_mv2(as_strided_mv)
+# %% Exercise - matrix-matrix multiplication
+def as_strided_mm(matA: Float[Tensor, "i j"], matB: Float[Tensor, "j k"]) -> Float[Tensor, "i k"]:
+    """
+    Returns the same as `torch.matmul`, using only `as_strided` and `sum` methods.
+    """
+    size = (matA.size(0), matB.size(1), matA.size(1))
+    matA_repeated = matA.as_strided(size, (matA.stride(0), 0, matA.stride(1)))
+    matB_repeated = matB.as_strided(size, (0, matB.stride(1), matB.stride(0)))
+    return (matA_repeated * matB_repeated).sum(dim=2)
+    raise NotImplementedError()
+
+
+tests.test_mm(as_strided_mm)
+tests.test_mm2(as_strided_mm)
 # %%
