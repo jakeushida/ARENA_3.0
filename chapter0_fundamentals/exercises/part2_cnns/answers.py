@@ -1076,4 +1076,27 @@ def conv1d_minimal_simple(
 
 
 tests.test_conv1d_minimal_simple(conv1d_minimal_simple)
+# %% Exercise - implement minimal 1D conv (part 2)
+def conv1d_minimal(
+    x: Float[Tensor, "batch in_channels width"],
+    weights: Float[Tensor, "out_channels in_channels kernel_width"],
+) -> Float[Tensor, "batch out_channels output_width"]:
+    """
+    Like torch's conv1d using bias=False and all other keyword arguments left at default values.
+    """
+    batch, in_channels, x_width = x.shape
+    out_channels, _, kernel_width = weights.shape
+    out_width = x_width - kernel_width + 1
+    batch_stride, in_channels_stride, x_width_stride = x.stride()
+
+    new_x_size = (batch, in_channels, out_width, kernel_width)
+    new_x_stride = (batch_stride, in_channels_stride, x_width_stride, x_width_stride)
+
+    x_repeated = x.as_strided(new_x_size, new_x_stride)
+
+    return einops.einsum(x_repeated, weights, "b ic ow kw, oc ic kw -> b oc ow")
+    raise NotImplementedError()
+
+
+tests.test_conv1d_minimal(conv1d_minimal)
 # %%
