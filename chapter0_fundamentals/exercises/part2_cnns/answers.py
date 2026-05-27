@@ -1056,4 +1056,24 @@ def as_strided_mm(matA: Float[Tensor, "i j"], matB: Float[Tensor, "j k"]) -> Flo
 
 tests.test_mm(as_strided_mm)
 tests.test_mm2(as_strided_mm)
+# %% Exercise - implement minimal 1D conv (part 1)
+def conv1d_minimal_simple(
+    x: Float[Tensor, " width"], weights: Float[Tensor, " kernel_width"]
+) -> Float[Tensor, " output_width"]:
+    """
+    Like torch's conv1d using bias=False and all other keyword arguments left at default values.
+
+    Simplifications: batch = input channels = output channels = 1.
+    """
+    x_size, weights_size = x.size(0), weights.size(0)
+    x_stride = x.stride(0)
+    out_width = x_size - weights_size + 1
+
+    x_repeated = x.as_strided((out_width, weights_size), (x_stride, x_stride))
+
+    return einops.einsum(x_repeated, weights, "i j, j -> i")
+    raise NotImplementedError()
+
+
+tests.test_conv1d_minimal_simple(conv1d_minimal_simple)
 # %%
