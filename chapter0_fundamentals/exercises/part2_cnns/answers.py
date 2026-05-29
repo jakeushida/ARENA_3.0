@@ -1160,4 +1160,32 @@ def pad2d(
 
 tests.test_pad2d(pad2d)
 tests.test_pad2d_multi_channel(pad2d)
+# %%　Exercise - implement 1D convolutions
+def conv1d(
+    x: Float[Tensor, "batch in_channels width"],
+    weights: Float[Tensor, "out_channels in_channels kernel_width"],
+    stride: int = 1,
+    padding: int = 0,
+) -> Float[Tensor, "batch out_channels width"]:
+    """
+    Like torch's conv1d using bias=False.
+    """
+    batch, in_channels, x_width = x.shape
+    kernel_width = weights.size(2)
+    out_width = (x_width + 2 * padding - kernel_width) // stride + 1
+
+    x_padded = pad1d(x, left=padding, right=padding, pad_value=0)
+    
+    batch_stride, in_channels_stride, x_width_stride = x_padded.stride()
+
+    new_x_size = (batch, in_channels, out_width, kernel_width)
+    new_x_stride = (batch_stride, in_channels_stride, x_width_stride * stride, x_width_stride)
+
+    x_repeated = x_padded.as_strided(new_x_size, new_x_stride)
+
+    return einops.einsum(x_repeated, weights, "b ic ow kw, oc ic kw -> b oc ow")
+    raise NotImplementedError()
+
+
+tests.test_conv1d(conv1d)
 # %%
