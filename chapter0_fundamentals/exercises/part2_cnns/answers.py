@@ -1099,4 +1099,28 @@ def conv1d_minimal(
 
 
 tests.test_conv1d_minimal(conv1d_minimal)
+# %% Exercise - implement 2D minimal convolutions
+def conv2d_minimal(
+    x: Float[Tensor, "batch in_channels height width"],
+    weights: Float[Tensor, "out_channels in_channels kernel_height kernel_width"],
+) -> Float[Tensor, "batch out_channels height_padding width_padding"]:
+    """
+    Like torch's conv2d using bias=False and all other keyword arguments left at default values.
+    """
+    batch, in_channels, x_height, x_width = x.shape
+    kernel_height, kernel_width = weights.shape[-2:]
+    out_height = x_height - kernel_height + 1
+    out_width = x_width - kernel_width + 1
+    batch_stride, in_channels_stride, x_height_stride, x_width_stride = x.stride()
+
+    new_x_size = (batch, in_channels, out_height, out_width, kernel_height, kernel_width)
+    new_x_stride = (batch_stride, in_channels_stride, x_height_stride, x_width_stride, x_height_stride, x_width_stride)
+
+    x_repeated = x.as_strided(new_x_size, new_x_stride)
+
+    return einops.einsum(x_repeated, weights, "b ic oh ow kh kw, oc ic kh kw -> b oc oh ow")
+    raise NotImplementedError()
+
+
+tests.test_conv2d_minimal(conv2d_minimal)
 # %%
