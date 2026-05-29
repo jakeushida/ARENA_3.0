@@ -1123,4 +1123,41 @@ def conv2d_minimal(
 
 
 tests.test_conv2d_minimal(conv2d_minimal)
+
+# Exercise - implement padding
+# %%
+# pad1d
+def pad1d(
+    x: Float[Tensor, "batch in_channels width"], left: int, right: int, pad_value: float
+) -> Float[Tensor, "batch in_channels width_padding"]:
+    """Return a new tensor with padding applied to the edges."""
+    b, ic, w = x.shape
+    out = x.new_full((b, ic, left + w + right), pad_value)
+    out[..., left:left+w] = x
+    return out
+    raise NotImplementedError()
+
+
+tests.test_pad1d(pad1d)
+tests.test_pad1d_multi_channel(pad1d)
+# %%
+# pad2d
+def pad2d(
+    x: Float[Tensor, "batch in_channels height width"],
+    left: int,
+    right: int,
+    top: int,
+    bottom: int,
+    pad_value: float,
+) -> Float[Tensor, "batch in_channels height_padding width_padding"]:
+    """Return a new tensor with padding applied to the width & height dimensions."""
+    b, ic, h, w = x.shape
+    out = x.new_full((b, ic, top + h + bottom, left + w + right), pad_value)
+    out[..., top:top+h, left:left+w] = x
+    return out
+    raise NotImplementedError()
+
+
+tests.test_pad2d(pad2d)
+tests.test_pad2d_multi_channel(pad2d)
 # %%
