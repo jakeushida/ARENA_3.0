@@ -1188,4 +1188,60 @@ def conv1d(
 
 
 tests.test_conv1d(conv1d)
+
+# Exercise - implement 2D convolutions
+# %%
+# helper function
+IntOrPair = int | tuple[int, int]
+Pair = tuple[int, int]
+
+
+def force_pair(v: IntOrPair) -> Pair:
+    """Convert v to a pair of int, if it isn't already."""
+    if isinstance(v, tuple):
+        if len(v) != 2:
+            raise ValueError(v)
+        return (int(v[0]), int(v[1]))
+    elif isinstance(v, int):
+        return (v, v)
+    raise ValueError(v)
+
+
+# Examples of how this function can be used:
+for v in [(1, 2), 2, (1, 2, 3)]:
+    try:
+        print(f"{v!r:9} -> {force_pair(v)!r}")
+    except ValueError:
+        print(f"{v!r:9} -> ValueError")
+# %%
+# conv2d 
+def conv2d(
+    x: Float[Tensor, "batch in_channels height width"],
+    weights: Float[Tensor, "out_channels in_channels kernel_height kernel_width"],
+    stride: IntOrPair = 1,
+    padding: IntOrPair = 0,
+) -> Float[Tensor, "batch out_channels height width"]:
+    """
+    Like torch's conv2d using bias=False.
+    """
+    height_stride, width_stride = force_pair(stride)
+    height_padding, width_padding = force_pair(padding)
+    x_padded = pad2d(x, left=width_padding, right=width_padding, top=height_padding, bottom=height_padding, pad_value=0)
+
+    batch, in_channels, x_height, x_width = x_padded.shape
+    kernel_height, kernel_width = weights.shape[-2:]
+    out_height = (x_height - kernel_height) // height_stride + 1
+    out_width = (x_width - kernel_width) // width_stride + 1
+    batch_stride, in_channels_stride, x_height_stride, x_width_stride = x_padded.stride()
+
+    new_x_size = (batch, in_channels, out_height, out_width, kernel_height, kernel_width)
+    new_x_stride = (batch_stride, in_channels_stride, x_height_stride * height_stride, x_width_stride * width_stride, x_height_stride, x_width_stride)
+
+    x_repeated = x_padded.as_strided(new_x_size, new_x_stride)
+
+    return einops.einsum(x_repeated, weights, "b ic oh ow kh kw, oc ic kh kw -> b oc oh ow")
+    raise NotImplementedError()
+
+
+tests.test_conv2d(conv2d)
 # %%
