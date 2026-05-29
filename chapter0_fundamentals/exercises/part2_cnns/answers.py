@@ -1245,3 +1245,40 @@ def conv2d(
 
 tests.test_conv2d(conv2d)
 # %%
+# Exercise - implement 2D max pooling
+def maxpool2d(
+    x: Float[Tensor, "batch in_channels height width"],
+    kernel_size: IntOrPair,
+    stride: IntOrPair | None = None,
+    padding: IntOrPair = 0,
+) -> Float[Tensor, "batch out_channels height width"]:
+    """
+    Like PyTorch's maxpool2d. If stride is None, should be equal to kernel size.
+    """
+    stride = kernel_size if stride is None else stride
+
+    k_h, k_w = force_pair(kernel_size)
+    s_h, s_w = force_pair(stride)
+    p_h, p_w = force_pair(padding)
+
+    x_padded = pad2d(x, left=p_w, right=p_w, top=p_h, bottom=p_h, pad_value=-t.inf)
+
+    b, ic, x_h, x_w = x_padded.shape
+    s_b, s_ic, s_x_h, s_x_w = x_padded.stride()
+
+    o_h = (x_h - k_h) // s_h + 1
+    o_w = (x_w - k_w) // s_w + 1
+
+    x_new_shape = (b, ic, o_h, o_w, k_h, k_w)
+    x_new_stride = (s_b, s_ic, s_x_h * s_h, s_x_w * s_w, s_x_h, s_x_w)
+
+    x_strided = x_padded.as_strided(x_new_shape, x_new_stride)
+
+    return x_strided.amax((-2, -1))
+    raise NotImplementedError()
+
+
+tests.test_maxpool2d(maxpool2d)
+
+
+# %%
