@@ -1281,4 +1281,192 @@ def maxpool2d(
 tests.test_maxpool2d(maxpool2d)
 
 
+# ResNet using stride-based functions
+# %% Exercise - implement `Conv2d`
+class Conv2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+    ):
+        """
+        Same as torch.nn.Conv2d with bias=False.
+
+        Name your weight field `self.weight` for compatibility with the PyTorch version.
+
+        We assume kernel is square, with height = width = `kernel_size`.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        bound = 1 / (in_channels * kernel_size ** 2) ** 0.5
+        weight = t.empty(out_channels, in_channels, kernel_size, kernel_size).uniform_(-bound, bound)
+
+        self.weight = nn.Parameter(weight)
+        # raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply the functional conv2d, which you can import."""
+        return conv2d(x, self.weight, stride=self.stride, padding=self.padding)
+
+    def extra_repr(self) -> str:
+        keys = ["in_channels", "out_channels", "kernel_size", "stride", "padding"]
+        return ", ".join([f"{key}={getattr(self, key)}" for key in keys])
+
+
+tests.test_conv2d_module(Conv2d)
+m = Conv2d(in_channels=24, out_channels=12, kernel_size=3, stride=2, padding=1)
+print(f"Manually verify that this is an informative repr: {m}")
+# %%　MaxPool2d
+class MaxPool2d(nn.Module):
+    def __init__(self, kernel_size: int, stride: int | None = None, padding: int = 1):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Call the functional version of maxpool2d."""
+        return maxpool2d(x, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding)
+
+    def extra_repr(self) -> str:
+        """Add additional information to the string representation of this class."""
+        return ", ".join([f"{key}={getattr(self, key)}" for key in ["kernel_size", "stride", "padding"]])
+# %% Exercise - implement `ResidualBlock`
+class ResidualBlock(nn.Module):
+    def __init__(self, in_feats: int, out_feats: int, first_stride=1):
+        """
+        A single residual block with optional downsampling.
+
+        For compatibility with the pretrained model, declare the left side branch first using a
+        `Sequential`.
+
+        If first_stride is > 1, this means the optional (conv + bn) should be present on the right
+        branch. Declare it second using another `Sequential`.
+        """
+        super().__init__()
+        is_shape_preserving = (first_stride == 1) and (in_feats == out_feats)  # determines if right branch is identity
+        
+        self.left_branch = Sequential(
+            Conv2d(in_feats, out_feats, kernel_size=3, stride=first_stride, padding=1), 
+            BatchNorm2d(out_feats), 
+            ReLU(), 
+            Conv2d(out_feats, out_feats, kernel_size=3, stride=1, padding=1), 
+            BatchNorm2d(out_feats))
+        
+        self.right_branch = (
+            nn.Identity() 
+            if is_shape_preserving 
+            else Sequential(
+                Conv2d(in_feats, out_feats, kernel_size=1, stride=first_stride, padding=0), 
+                BatchNorm2d(out_feats)))
+
+        self.relu = ReLU()
+
+        #raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Compute the forward pass. If no downsampling block is present, the addition should just add
+        the left branch's output to the input.
+
+        x: shape (batch, in_feats, height, width)
+
+        Return: shape (batch, out_feats, height / stride, width / stride)
+        """
+        return self.relu(self.left_branch(x) + self.right_branch(x))
+        raise NotImplementedError()
+
+
+tests.test_residual_block(ResidualBlock)
+# %% Exercise - implement `BlockGroup`
+class BlockGroup(nn.Module):
+    def __init__(self, n_blocks: int, in_feats: int, out_feats: int, first_stride=1):
+        """
+        An n_blocks-long sequence of ResidualBlock where only the first block uses the provided
+        stride.
+        """
+        super().__init__()
+        other_blocks = [ResidualBlock(out_feats, out_feats) for _ in range(n_blocks - 1)]
+
+        self.blocks = Sequential(
+            ResidualBlock(in_feats, out_feats, first_stride), 
+            *other_blocks
+        )
+        #raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Compute the forward pass.
+
+        x: shape (batch, in_feats, height, width)
+
+        Return: shape (batch, out_feats, height / first_stride, width / first_stride)
+        """
+        return self.blocks(x)
+        raise NotImplementedError()
+
+tests.test_block_group(BlockGroup)
+# %% Exercise - implement `ResNet34`
+class ResNet34(nn.Module):
+    def __init__(
+        self,
+        n_blocks_per_group=[3, 4, 6, 3],
+        out_features_per_group=[64, 128, 256, 512],
+        first_strides_per_group=[1, 2, 2, 2],
+        n_classes=1000,
+    ):
+        super().__init__()
+        out_feats0 = 64
+        
+        self.n_blocks_per_group = n_blocks_per_group
+        self.out_features_per_group = out_features_per_group
+        self.first_strides_per_group = first_strides_per_group
+        self.n_classes = n_classes
+
+        in_features_per_group = [out_feats0] + out_features_per_group[:-1]
+
+        block_groups = [BlockGroup(n_blocks, in_feats, out_feats, first_stride) for n_blocks, in_feats, out_feats, first_stride in zip(n_blocks_per_group, in_features_per_group, out_features_per_group, first_strides_per_group)]
+
+        self.all_layers = Sequential(
+            Conv2d(in_channels=3, out_channels=out_feats0, kernel_size=7, stride=2, padding=3),
+            BatchNorm2d(num_features=out_feats0),
+            ReLU(), 
+            MaxPool2d(kernel_size=3, stride=2),
+            *block_groups, 
+            AveragePool(),
+            Linear(in_features=out_features_per_group[-1], out_features=n_classes)
+        )
+        # raise NotImplementedError()
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, n_classes)
+        """
+        return self.all_layers(x)
+        raise NotImplementedError()
+
+
+my_resnet = ResNet34()
+
+# (1) Test via helper function `print_param_count`
+target_resnet = models.resnet34()  # without supplying a `weights` argument, we just initialize with random weights
+utils.print_param_count(my_resnet, target_resnet)
+
+# (2) Test via `torchinfo.summary`
+print("My model:", torchinfo.summary(my_resnet, input_size=(1, 3, 64, 64)), sep="\n")
+print(
+    "\nReference model:",
+    torchinfo.summary(target_resnet, input_size=(1, 3, 64, 64), depth=2),
+    sep="\n",
+)
+
 # %%
