@@ -397,7 +397,6 @@ class WandbResNetFinetuningArgs(ResNetFinetuningArgs):
     wandb_project: str | None = "day3-resnet"
     wandb_name: str | None = None
 
-
 class WandbResNetFinetuner(ResNetFinetuner):
     args: WandbResNetFinetuningArgs  # adding this line helps with typechecker!
     examples_seen: int = 0  # tracking examples seen (used as step for wandb)
@@ -405,8 +404,8 @@ class WandbResNetFinetuner(ResNetFinetuner):
     def pre_training_setup(self):
         """Initializes the wandb run using `wandb.init` and `wandb.watch`."""
         super().pre_training_setup()
-        wandb.init(project=args.wandb_project, name=args.wandb_name, config=args)
-        wandb.watch(models=ResNet34().out_layers[-1], log='all', log_freq=50)
+        wandb.init(project=self.args.wandb_project, name=self.args.wandb_name, config=self.args)
+        wandb.watch(models=self.model.out_layers[-1], log='all', log_freq=50)
         # raise NotImplementedError()
 
     def training_step(
@@ -466,8 +465,61 @@ class WandbResNetFinetuner(ResNetFinetuner):
         return None
         raise NotImplementedError()
 
-
+# %%
 args = WandbResNetFinetuningArgs()
 trainer = WandbResNetFinetuner(args)
 trainer.train()
+# %% Exercise - define a sweep config & update `args`
+sweep_config = dict(
+    method = "random",
+    metric = dict(
+        name = "accuracy", 
+        goal = "maximize"
+    ),
+    parameters = dict(
+        learning_rate = dict(min = 1e-4, max = 1e-1, distribution = "log_uniform_values"), 
+        batch_size = dict(values = [32, 64, 128, 256]), 
+        weight_decay = dict(min = 1e-4, max = 1e-2, distribution = "log_uniform_values"),
+        weight_decay_bool = dict(values = [True, False])
+    ),
+)
+
+
+def update_args(args: WandbResNetFinetuningArgs, sampled_parameters: dict) -> WandbResNetFinetuningArgs:
+    """
+    Returns a new args object with modified values. The dictionary `sampled_parameters` will have
+    the same keys as your `sweep_config["parameters"]` dict, and values equal to the sampled values
+    of those hyperparameters.
+    """
+    assert set(sampled_parameters.keys()) == set(sweep_config["parameters"].keys())
+
+    args.batch_size = sampled_parameters["batch_size"]
+    args.learning_rate = sampled_parameters["learning_rate"]
+    args.weight_decay = sampled_parameters["weight_decay"] if sampled_parameters["weight_decay_bool"] else 0.0
+
+    return args
+    raise NotImplementedError()
+
+
+tests.test_sweep_config(sweep_config)
+tests.test_update_args(update_args, sweep_config)
+
+# %%
+# perform hyperparameter sweep
+def train():
+    # Define args & initialize wandb
+    args = WandbResNetFinetuningArgs()
+    wandb.init(project=args.wandb_project, name=args.wandb_name, reinit=False)
+
+    # After initializing wandb, we can update args using `wandb.config`
+    args = update_args(args, dict(wandb.config))
+
+    # Train the model with these new hyperparameters (the second `wandb.init` call will be ignored)
+    trainer = WandbResNetFinetuner(args)
+    trainer.train()
+
+
+sweep_id = wandb.sweep(sweep=sweep_config, project="day3-resnet-sweep")
+wandb.agent(sweep_id=sweep_id, function=train, count=3)
+wandb.finish()
 # %%
